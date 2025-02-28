@@ -10,7 +10,9 @@ library(future)
 
 
 do_sims <- function(niter, n, pos_const, muIsHard, do_local_alt = FALSE) {
+  seed_init <- 12345
   sim_results <- rbindlist(lapply(1:niter, function(iter) {
+    set.seed(seed_init*iter)
     print(paste0("Iteration number: ", iter))
     try({
       if(!do_local_alt) {
@@ -99,17 +101,28 @@ get_estimates <- function(W, A, Y,iter, pi_true) {
 
   fit_pi <- lrnr_A$train(task_A)
 
- pi <- fit_pi$predict(task_A)
- pi <- truncate_pscore_adaptive(A, pi)
+  pi <- fit_pi$predict(task_A)
+  pi <- truncate_pscore_adaptive(A, pi)
 
 
 
   m <- mu0 * (1-pi) + mu1 * (pi)
- fit_R <- fit_hal_cate_partially_linear(W, A, Y,  fit_control = list(parallel = TRUE), pi.hat = pi, m.hat = m, formula_cate = NULL, max_degree_cate = 1, num_knots_cate = num_knots, smoothness_orders_cate = 1,      verbose = TRUE)
-
+  fit_R <- fit_hal_cate_partially_linear(W, A, Y,  fit_control = list(parallel = TRUE), pi.hat = pi, m.hat = m, formula_cate = NULL, max_degree_cate = 1, num_knots_cate = num_knots, smoothness_orders_cate = 1,      verbose = TRUE)
   ate_R<-  unlist(inference_ate(fit_R))
   ate_R[1] <- "Rlearner"
 
+  #
+  cate.hat <- fit_R$data$tau_relaxed
+  calibrator <- isoreg_with_xgboost(cate.hat, fit_R$data$pseudo_outcome, weights = fit_R$data$pseudo_weights)
+  cate_cal <- calibrator(cate.hat)
+  # Create a data.table
+  dt <- data.table(tau_cal, cond_var, weight = (A - pi)^2)
+  gamma_dt <- dt[, .(gamma = weighted.mean(cond_var, w = weight)), by = tau_cal]
+  dt <- merge(dt, gamma_dt, by = "tau_cal", all.x = TRUE, sort = FALSE)
+  gamma_n <- dt$gamma
+  IF <-  (A - pi) * gamma_n * (Y - m - (A-pi)*cate_cal)
+  CI <- mean(cate_cal) + 1.96*c(-1,1)*sd(IF)/sqrt(n)
+  ate_cal <- c("cal", mean(cate_cal), sd(IF)/sqrt(n), CI)
 
   tau_int <- mean((A-pi) * (Y - m)) / mean((A-pi)^2)
   IF <- (A - pi) / mean((A-pi)^2) * (Y - m - (A-pi)*tau_int)
@@ -118,6 +131,7 @@ get_estimates <- function(W, A, Y,iter, pi_true) {
   names(ate_intercept) <- c("method", "coef","se", "CI_left", "CI_right")
 
 
+  #
 
   IF <- mu1 - mu0 +  (A/pi - (1-A)/(1-pi)) * (Y - mu)
   est_AIPW <-  mean(IF)
@@ -125,7 +139,9 @@ get_estimates <- function(W, A, Y,iter, pi_true) {
   ate_aipw <- c("AIPW", est_AIPW, sd(IF)/sqrt(n), CI)
   names(ate_aipw) <- c("method", "coef","se", "CI_left", "CI_right")
 
-  mat <- cbind(iter,rbind(ate_T, ate_R, ate_intercept, ate_aipw))
+  mat <- cbind(iter,rbind(ate_T, ate_R, ate_intercept, ate_aipw, ate_cal))
   colnames(mat)  <- c("iter", "method", "coef","se", "CI_left", "CI_right")
+
+
   return(mat)
 }
