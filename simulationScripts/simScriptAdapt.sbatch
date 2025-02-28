@@ -9,3 +9,4 @@ echo "LOADING R"
 module load R
 echo "R LOADED"
 Rscript -e 'source("~/causalHAL/simulationScripts/R_setup.R"); source("~/causalHAL/simulationScripts/simScriptAdapt.R"); n = as.numeric(Sys.getenv("n")); pos_const = as.numeric(Sys.getenv("const")); muIsHard = as.logical(Sys.getenv("hard")); do_sims(5000, n, pos_const, muIsHard)'
+
