@@ -32,13 +32,11 @@
 #' @param max_degree_cate (Optional) Same as \code{max_degree} but for CATE model.
 #' @param num_knots_cate (Optional) Same as \code{num_knots} but for CATE model.
 #' @param smoothness_orders_cate (Optional) Same as \code{smoothness_orders} but for CATE model.
-#' @param screen_variables Highly recommended. See documentation for \code{\link[hal9001]{fit_hal}}.
-#' @param screen_interactions Highly recommended. See documentation for \code{\link[hal9001]{fit_hal}}.
 #' @param ... Other arguments to be passed to \code{\link[hal9001]{fit_hal}}.
 #' @import hal9001
 #' @export
 
-fit_hal_cate_plugin <- function(W, A, Y,weights = NULL, formula_cate = NULL, max_degree_cate = 3, num_knots_cate =  c(sqrt(length(Y)), length(Y)^(1/3), length(Y)^(1/5)), smoothness_orders_cate = 1, screen_variable_cate = TRUE,   params_EY0W =  list(max_degree = 3, num_knots =  c(sqrt(length(Y)), length(Y)^(1/3), length(Y)^(1/5)), smoothness_orders = 1, screen_variables = TRUE), include_propensity_score = FALSE,   verbose = TRUE,...) {
+fit_hal_cate_plugin <- function(W, A, Y,weights = NULL, formula_cate = NULL, max_degree_cate = 3, num_knots_cate =  c(sqrt(length(Y)), length(Y)^(1/3), length(Y)^(1/5)), smoothness_orders_cate = 1, params_EY0W =  list(max_degree = 3, num_knots =  c(sqrt(length(Y)), length(Y)^(1/3), length(Y)^(1/5)), smoothness_orders = 1), include_propensity_score = FALSE,   verbose = TRUE,...) {
     if(!all(A %in% c(0,1))) {
     stop("The treatment `A` should be binary. For continuous treatments consider using `fit_hal_pcate()`.")
   }
@@ -52,7 +50,7 @@ fit_hal_cate_plugin <- function(W, A, Y,weights = NULL, formula_cate = NULL, max
   # mu = E[Y | W]
   if(include_propensity_score) {
     if(verbose) print("Fitting pi = E[A|W]")
-    fit_pi <- fit_hal(W, A, weights = weights, max_degree = max_degree, num_knots = num_knots, smoothness_orders = smoothness_orders, family = family_A, screen_variables = screen_variables,... )
+    fit_pi <- fit_hal(W, A, weights = weights, max_degree = max_degree, num_knots = num_knots, smoothness_orders = smoothness_orders, family = family_A,... )
     cols_pi <- unique(unlist(lapply(fit_pi$basis_list, function(basis) {basis$cols})))
     pi <- predict(fit_pi, new_data = W)
     if(verbose) print(fit_pi$formula)
@@ -75,7 +73,7 @@ fit_hal_cate_plugin <- function(W, A, Y,weights = NULL, formula_cate = NULL, max
   params_EY0W$family <- "gaussian"
 
   fit_mu0 <- sl3:::call_with_args(fit_hal, params_EY0W)
-  #fit_mu0 <- fit_hal(W_pi[subset, , drop = F], Y[subset], weights = weights[subset], max_degree = max_degree, num_knots = num_knots, smoothness_orders = smoothness_orders, family = "gaussian", screen_variables = screen_variables,... )
+  #fit_mu0 <- fit_hal(W_pi[subset, , drop = F], Y[subset], weights = weights[subset], max_degree = max_degree, num_knots = num_knots, smoothness_orders = smoothness_orders, family = "gaussian",... )
   mu0 <- predict(fit_mu0, new_data = W_pi)
   basis_list_reduced_mu0 <- fit_mu0$basis_list[fit_mu0$coefs[-1] != 0]
   x_basis_mu0 <- cbind(1,as.matrix(hal9001::make_design_matrix(W_pi, basis_list_reduced_mu0)))
@@ -85,7 +83,7 @@ fit_hal_cate_plugin <- function(W, A, Y,weights = NULL, formula_cate = NULL, max
   if(verbose) print("Fitting tau = E[Y|A=1,W] - E[Y|A=0,W]")
   subset <- A==1
   # Offset not supported by MARS screener so added to outcome since we use least-squares
-  fit_cate <- fit_hal(W[subset, , drop = F], Y[subset] - mu0[subset], weights = weights[subset], max_degree = max_degree_cate, formula = formula_cate, num_knots = num_knots_cate, smoothness_orders = smoothness_orders_cate, family = "gaussian", screen_variables = screen_variable_cate,... )
+  fit_cate <- fit_hal(W[subset, , drop = F], Y[subset] - mu0[subset], weights = weights[subset], max_degree = max_degree_cate, formula = formula_cate, num_knots = num_knots_cate, smoothness_orders = smoothness_orders_cate, family = "gaussian",... )
   tau <- predict(fit_cate, new_data = W)
   basis_list_reduced_tau <- fit_mu0$basis_list[fit_cate$coefs[-1] != 0]
   x_basis_tau <- cbind(1,as.matrix(hal9001::make_design_matrix(W, basis_list_reduced_tau)))
